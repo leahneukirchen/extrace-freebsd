@@ -8,7 +8,7 @@
 .Nm
 .Op Fl deflq
 .Op Fl o Ar file
-.Op Fl p Ar pid | cmd\ ...
+.Op Fl p Ar pid | cmd ...
 .Sh DESCRIPTION
 .Nm
 traces all program executions occurring on a system.
@@ -41,9 +41,9 @@ Only trace
 .Xr exec 3
 calls descendant of
 .Ar pid .
-.It Ar cmd\ ...
+.It Ar cmd ...
 Run
-.Ar cmd\ ...
+.Ar cmd ...
 and only trace descendants of this command.
 .Pp
 By default, all

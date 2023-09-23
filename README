@@ -1,10 +1,10 @@
-EXTRACE(1)                  General Commands Manual                 EXTRACE(1)
+EXTRACE(1)              FreeBSD General Commands Manual             EXTRACE(1)
 
 NAME
      extrace – trace exec() calls system-wide
 
 SYNOPSIS
-     extrace [-deflq] [-o file] [-p pid | cmd ...]
+     extrace [-deflq] [-o file] [-p pid | cmd ...]
 
 DESCRIPTION
      extrace traces all program executions occurring on a system.
@@ -28,13 +28,13 @@ DESCRIPTION
 
      -p pid  Only trace exec(3) calls descendant of pid.
 
-     cmd ...
-             Run cmd ... and only trace descendants of this command.
+     cmd ...
+             Run cmd ... and only trace descendants of this command.
 
              By default, all exec(3) calls are traced globally.
 
 EXIT STATUS
-     The extrace utility exits 0 on success, and >0 if an error occurs.
+     The extrace utility exits 0 on success, and >0 if an error occurs.
 
 SEE ALSO
      fatrace(1), ktrace(1), ps(1), pwait(1)
@@ -46,4 +46,4 @@ AUTHORS
 LICENSE
      extrace is licensed under the terms of the MIT.
 
-OpenBSD                          June 30, 2017                         OpenBSD
+FreeBSD                          June 30, 2017                         FreeBSD

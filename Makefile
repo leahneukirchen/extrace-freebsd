@@ -12,7 +12,7 @@ MANDIR=$(PREFIX)/man
 all: $(ALL)
 
 README: extrace.1
-	mandoc -Wall -Ios=OpenBSD -Tutf8 $< | col -bx >$@
+	mandoc -Wall -Ios=FreeBSD -Tutf8 $> | col -bx >$@
 
 clean: FRC
 	rm -f $(ALL)
