@@ -17,6 +17,7 @@
 #include <sys/types.h>
 #include <sys/event.h>
 #include <sys/param.h>
+#include <sys/proc.h>
 #include <sys/sysctl.h>
 #include <sys/user.h>
 #include <sys/wait.h>
@@ -246,8 +247,13 @@ usage:
 		kp = kvm_getprocs(kd, KERN_PROC_ALL, 0, &n);
 		if ((kevs = calloc(n, sizeof (struct kevent))) == NULL)
 			err(1, "calloc");
-		for (i = 0; i < n; i++)
+		for (i = 0; i < n; i++) {
+			if (!kp[i].ki_pid || !kp[i].ki_ppid)
+				continue;
+			if (kp[i].ki_stat == SZOMB)
+				continue;
 			EV_SET(&kevs[i], kp[i].ki_pid, EVFILT_PROC, EV_ADD, NOTE_EXEC | NOTE_TRACK, 0, 0);
+		}
 		if (kevent(kq, kevs, n, 0, 0, 0) == -1)
 			err(1, "kevent");
 		free(kevs);
