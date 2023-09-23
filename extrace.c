@@ -51,6 +51,10 @@ pid_depth(pid_t pid)
 	int n;
 
 	kp = kvm_getprocs(kd, KERN_PROC_PID, pid, &n);
+	if (!kp) {
+		fprintf(stderr, "extrace: kvm_getprocs: %s\n", kvm_geterr(kd));
+		return -1;
+	}
 	ppid = kp->ki_ppid;
 
 	if (pid == parent)
