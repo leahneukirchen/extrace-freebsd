@@ -11,15 +11,17 @@
  * -l       print full path of argv[0]
  * -q       don't print exec() arguments
  *
- * Copyright (c) 2014-2016 Leah Neukirchen <leah@vuxu.org>
+ * Copyright (c) 2014-2016, 2023 Leah Neukirchen <leah@vuxu.org>
  * Copyright (c) 2017 Duncan Overbruck <mail@duncano.de>
  */
 #include <sys/types.h>
 #include <sys/event.h>
 #include <sys/param.h>
 #include <sys/sysctl.h>
+#include <sys/user.h>
 #include <sys/wait.h>
 
+#include <fcntl.h>
 #include <err.h>
 #include <kvm.h>
 #include <signal.h>
@@ -48,11 +50,14 @@ pid_depth(pid_t pid)
 	int d;
 	int n;
 
-	kp = kvm_getprocs(kd, KERN_PROC_PID, pid, sizeof (struct kinfo_proc), &n);
-	ppid = kp->p_ppid;
+	kp = kvm_getprocs(kd, KERN_PROC_PID, pid, &n);
+	ppid = kp->ki_ppid;
+
+	if (pid == parent)
+		return 0;
 
 	if (ppid == parent)
-		return 0;
+		return 1;
 
 	if (ppid == 0)
 		return -1;  /* a parent we are not interested in */
@@ -91,11 +96,10 @@ print_shquoted(const char *s)
 static void
 handle_msg(pid_t pid)
 {
-	char cwd[PATH_MAX], **pp;
+	char **pp;
 	struct kinfo_proc *kp;
 
 	int d, n;
-
 
 	if (!flat) {
 		d = pid_depth(pid);
@@ -106,16 +110,17 @@ handle_msg(pid_t pid)
 	fprintf(output, "%d ", pid);
 
 	if (show_cwd) {
-		int name[] = { CTL_KERN, KERN_PROC_CWD, 0 };
-		size_t cwdlen = sizeof cwd;
-		name[2] = pid;
-		if (sysctl(name, 3, cwd, &cwdlen, 0, 0) != 0)
-			*cwd = '\0';
-		print_shquoted(cwd);
+		int name[] = { CTL_KERN, KERN_PROC, KERN_PROC_CWD, pid };
+		struct kinfo_file info;
+		size_t len = sizeof info;
+		if (sysctl(name, 4, &info, &len, 0, 0) != 1)
+			print_shquoted(info.kf_path);
+		else
+			fprintf(output, "?");
 		fprintf(output, " %% ");
 	}
 
-	kp = kvm_getprocs(kd, KERN_PROC_PID, pid, sizeof (struct kinfo_proc), &n);
+	kp = kvm_getprocs(kd, KERN_PROC_PID, pid, &n);
 	if (!kp)
 		errx(1, "kvm_getprocs");
 	pp = kvm_getargv(kd, kp, 0);
@@ -123,8 +128,14 @@ handle_msg(pid_t pid)
 		errx(1, "kvm_getargv");
 
 	if (full_path) {
+		int name[] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, pid };
+		char path[PATH_MAX];
+		size_t len = sizeof path;
+		if (sysctl(name, 4, &path, &len, 0, 0) != 1)
+			print_shquoted(path);
+		else
+			print_shquoted(*pp);
 		pp++;
-		print_shquoted(kp->p_comm); /* XXX: this is not really the full path */
 	} else {
 		print_shquoted(*pp++);
 	}
@@ -170,9 +181,6 @@ main(int argc, char *argv[])
 
 	output = stdout;
 
-	if (pledge("exec stdio cpath wpath proc ps", NULL) == -1)
-		err(1, "pledge");
-
 	while ((opt = getopt(argc, argv, "deflo:p:qw")) != -1)
 		switch (opt) {
 		case 'd': show_cwd = 1; break;
@@ -192,9 +200,6 @@ main(int argc, char *argv[])
 		default: goto usage;
 		}
 
-	if (pledge("exec stdio proc ps", NULL) == -1)
-		err(1, "pledge");
-
 	if (parent != 1 && optind != argc) {
 usage:
 		fprintf(stderr, "Usage: extrace [-deflq] [-o FILE] [-p PID|CMD...]\n");
@@ -204,7 +209,7 @@ usage:
 	if ((kq = kqueue()) == -1)
 		err(1, "kqueue");
 
-	kd = kvm_openfiles(0, 0, 0, KVM_NO_FILES, 0);
+	kd = kvm_openfiles(0, 0, 0, O_RDONLY, 0);
 	if (!kd)
 		err(1, "kvm_open");
 
@@ -221,9 +226,6 @@ usage:
 		}
 	} 
 
-	if (pledge("stdio proc ps", NULL) == -1)
-		err(1, "pledge");
-
 	signal(SIGINT, SIG_IGN);
 	EV_SET(&kev[0], SIGINT, EVFILT_SIGNAL, EV_ADD, 0, 0, 0);
 	if (kevent(kq, kev, 1, 0, 0, 0) == -1)
@@ -237,18 +239,15 @@ usage:
 		struct kinfo_proc *kp;
 		struct kevent *kevs = NULL;
 
-		kp = kvm_getprocs(kd, KERN_PROC_ALL, 0, sizeof (struct kinfo_proc), &n);
+		kp = kvm_getprocs(kd, KERN_PROC_ALL, 0, &n);
 		if ((kevs = calloc(n, sizeof (struct kevent))) == NULL)
 			err(1, "calloc");
 		for (i = 0; i < n; i++)
-			EV_SET(&kevs[i], kp[i].p_pid, EVFILT_PROC, EV_ADD, NOTE_EXEC | NOTE_TRACK, 0, 0);
+			EV_SET(&kevs[i], kp[i].ki_pid, EVFILT_PROC, EV_ADD, NOTE_EXEC | NOTE_TRACK, 0, 0);
 		if (kevent(kq, kevs, n, 0, 0, 0) == -1)
 			err(1, "kevent");
 		free(kevs);
 	}
-
-	if (pledge("stdio ps", NULL) == -1)
-		err(1, "pledge");
 
 	while (!quit) {
 		n = kevent(kq, 0, 0, kev, 4, 0);
