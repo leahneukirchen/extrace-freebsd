@@ -242,10 +242,15 @@ usage:
 			err(1, "kevent");
 	} else {
 		struct kinfo_proc *kp;
-		struct kevent *kevs = NULL;
+		struct kevent *kevs;
 
+again:
 		kp = kvm_getprocs(kd, KERN_PROC_ALL, 0, &n);
-		if ((kevs = calloc(n, sizeof (struct kevent))) == NULL)
+		if (!kp) {
+			fprintf(stderr, "extrace: kvm_getprocs ALL: %s\n", kvm_geterr(kd));
+			return -1;
+		}
+		if (!(kevs = calloc(n, sizeof (struct kevent))))
 			err(1, "calloc");
 		for (i = 0; i < n; i++) {
 			if (!kp[i].ki_pid || !kp[i].ki_ppid)
@@ -254,9 +259,12 @@ usage:
 				continue;
 			EV_SET(&kevs[i], kp[i].ki_pid, EVFILT_PROC, EV_ADD, NOTE_EXEC | NOTE_TRACK, 0, 0);
 		}
+		errno = 0;
 		if (kevent(kq, kevs, n, 0, 0, 0) == -1)
-			err(1, "kevent");
+			warn("kevent ALL");
 		free(kevs);
+		if (errno == ESRCH)
+			goto again;
 	}
 
 	while (!quit) {
