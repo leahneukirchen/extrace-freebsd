@@ -1,0 +1,7 @@
+.depend*
+extrace
+*.1.gz
+*.core
+*.debug
+*.full
+*.o
