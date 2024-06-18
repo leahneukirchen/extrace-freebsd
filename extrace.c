@@ -127,10 +127,10 @@ handle_msg(pid_t pid)
 
 	kp = kvm_getprocs(kd, KERN_PROC_PID, pid, &n);
 	if (!kp)
-		errx(1, "kvm_getprocs");
+		err(1, "kvm_getprocs");
 	pp = kvm_getargv(kd, kp, 0);
 	if (!pp)
-		errx(1, "kvm_getargv");
+		err(1, "kvm_getargv");
 
 	if (full_path) {
 		int name[] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, pid };
