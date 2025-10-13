@@ -11,7 +11,7 @@
  * -l       print full path of argv[0]
  * -q       don't print exec() arguments
  *
- * Copyright (c) 2014-2016, 2023 Leah Neukirchen <leah@vuxu.org>
+ * Copyright (c) 2014-2025 Leah Neukirchen <leah@vuxu.org>
  * Copyright (c) 2017 Duncan Overbruck <mail@duncano.de>
  */
 #include <sys/types.h>
@@ -38,18 +38,27 @@ static int full_path = 0;
 static int show_args = 1;
 static int show_cwd = 0;
 static int show_env = 0;
+static int show_exit = 0;
 
 static kvm_t *kd;
 static int kq;
 static int quit = 0;
+
+#define CMDLINE_DB_MAX 32
+#define PID_DB_SIZE 1024
+struct {
+        pid_t pid;
+        int depth;
+        struct timeval start;
+        char cmdline[CMDLINE_DB_MAX];
+} pid_db[PID_DB_SIZE];
 
 static int
 pid_depth(pid_t pid)
 {
 	struct kinfo_proc *kp;
 	pid_t ppid = 0;
-	int d;
-	int n;
+	int n, d, i;
 
 	kp = kvm_getprocs(kd, KERN_PROC_PID, pid, &n);
 	if (!kp) {
@@ -67,11 +76,16 @@ pid_depth(pid_t pid)
 	if (ppid == 0)
 		return -1;  /* a parent we are not interested in */
 
-	d = pid_depth(ppid);
+	for (i = 0; i < PID_DB_SIZE - 1; i++)
+		if (pid_db[i].pid == ppid)
+			d = pid_db[i].depth;
+	if (i == PID_DB_SIZE - 1)
+		d = pid_depth(ppid);  /* recurse */
+
 	if (d == -1)
 		return -1;
 
-	return d+1;
+	return d + 1;
 }
 
 static void
@@ -99,12 +113,51 @@ print_shquoted(const char *s)
 }
 
 static void
-handle_msg(pid_t pid)
+handle_exit(pid_t pid, int status)
+{
+	int d, i;
+
+	for (i = 0; i < PID_DB_SIZE - 1; i++)
+		if (pid_db[i].pid == 0 || pid_db[i].pid == pid)
+			break;
+
+	if (!flat) {
+		d = pid_db[i].depth;
+		if (d < 0)
+			return;
+		fprintf(output, "%*s", 2*d, "");
+	}
+
+	fprintf(output, "%d- ", pid);
+	print_shquoted(pid_db[i].cmdline);
+	if (WIFSIGNALED(status))
+		fprintf(output, " exited signal=%s", sys_signame[WTERMSIG(status)]);
+	else
+		fprintf(output, " exited status=%d", WEXITSTATUS(status));
+
+	struct timeval now, diff;
+	gettimeofday(&now, 0);
+	timersub(&now, &pid_db[i].start, &diff);
+	fprintf(output, " time=%.3fs\n", (double)diff.tv_sec + (double)diff.tv_usec / 1e6);
+
+	fflush(output);
+	pid_db[i].pid = 0;
+}
+
+static void
+handle_exec(pid_t pid)
 {
 	char **pp;
 	struct kinfo_proc *kp;
 
-	int d, n;
+	int d, i, n;
+
+	for (i = 0; i < PID_DB_SIZE - 1; i++)
+		if (pid_db[i].pid == 0 || pid_db[i].pid == pid)
+			break;
+	if (i == PID_DB_SIZE - 1)
+		fprintf(stderr, "extrace: warning: pid_db of "
+		    "size %d overflowed\n", PID_DB_SIZE);
 
 	if (!flat) {
 		d = pid_depth(pid);
@@ -112,7 +165,12 @@ handle_msg(pid_t pid)
 			return;
 		fprintf(output, "%*s", 2*d, "");
 	}
-	fprintf(output, "%d ", pid);
+
+
+	fprintf(output, "%d", pid);
+	if (show_exit)
+		putc('+', output);
+	putc(' ', output);
 
 	if (show_cwd) {
 		int name[] = { CTL_KERN, KERN_PROC, KERN_PROC_CWD, pid };
@@ -126,22 +184,36 @@ handle_msg(pid_t pid)
 	}
 
 	kp = kvm_getprocs(kd, KERN_PROC_PID, pid, &n);
-	if (!kp)
-		err(1, "kvm_getprocs");
+	if (!kp) {
+		fprintf(output, "\n");
+		warn("kvm_getprocs");
+		return;
+	}
 	pp = kvm_getargv(kd, kp, 0);
-	if (!pp)
-		err(1, "kvm_getargv");
+	if (!pp) {
+		fprintf(output, "\n");
+		warn("kvm_getargv");
+		return;
+	}
+
+	pid_db[i].pid = pid;
+	pid_db[i].depth = d;
+	pid_db[i].start = kp->ki_start;
 
 	if (full_path) {
 		int name[] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, pid };
 		char path[PATH_MAX];
 		size_t len = sizeof path;
-		if (sysctl(name, 4, &path, &len, 0, 0) != 1)
+		if (sysctl(name, 4, &path, &len, 0, 0) != 1) {
+			snprintf(pid_db[i].cmdline, CMDLINE_DB_MAX, "%s", path);
 			print_shquoted(path);
-		else
+		} else {
+			snprintf(pid_db[i].cmdline, CMDLINE_DB_MAX, "%s", *pp);
 			print_shquoted(*pp);
+		}
 		pp++;
 	} else {
+		snprintf(pid_db[i].cmdline, CMDLINE_DB_MAX, "%s", *pp);
 		print_shquoted(*pp++);
 	}
 
@@ -186,7 +258,7 @@ main(int argc, char *argv[])
 
 	output = stdout;
 
-	while ((opt = getopt(argc, argv, "deflo:p:qw")) != -1)
+	while ((opt = getopt(argc, argv, "deflo:p:qtw")) != -1)
 		switch (opt) {
 		case 'd': show_cwd = 1; break;
 		case 'e': show_env = 1; break;
@@ -201,13 +273,14 @@ main(int argc, char *argv[])
 				  exit(1);
 			}
 			break;
+		case 't': show_exit = 1; break;
 		case 'w': /* obsoleted, ignore */; break;
 		default: goto usage;
 		}
 
 	if (parent != 1 && optind != argc) {
 usage:
-		fprintf(stderr, "Usage: extrace [-deflq] [-o FILE] [-p PID|CMD...]\n");
+		fprintf(stderr, "Usage: extrace [-deflqt] [-o FILE] [-p PID|CMD...]\n");
 		exit(1);
 	}
 
@@ -257,7 +330,7 @@ again:
 				continue;
 			if (kp[i].ki_stat == SZOMB)
 				continue;
-			EV_SET(&kevs[i], kp[i].ki_pid, EVFILT_PROC, EV_ADD, NOTE_EXEC | NOTE_TRACK, 0, 0);
+			EV_SET(&kevs[i], kp[i].ki_pid, EVFILT_PROC, EV_ADD, NOTE_EXEC | (show_exit ? NOTE_EXIT : 0) | NOTE_TRACK, 0, 0);
 		}
 		errno = 0;
 		if (kevent(kq, kevs, n, 0, 0, 0) == -1)
@@ -279,8 +352,10 @@ again:
 				quit = 1;
 				break;
 			case EVFILT_PROC:
-				if (ke->fflags & NOTE_EXEC)
-					handle_msg(ke->ident);
+				if (ke->fflags & NOTE_EXIT)
+					handle_exit(ke->ident, ke->data);
+				else if (ke->fflags & NOTE_EXEC)
+					handle_exec(ke->ident);
 			}
 			if (quit)
 				break;
