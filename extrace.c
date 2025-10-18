@@ -117,9 +117,16 @@ handle_exit(pid_t pid, int status)
 {
 	int d, i;
 
-	for (i = 0; i < PID_DB_SIZE - 1; i++)
-		if (pid_db[i].pid == 0 || pid_db[i].pid == pid)
+	for (i = 0; i < PID_DB_SIZE; i++)
+		if (pid_db[i].pid == pid)
 			break;
+	if (pid == PID_DB_SIZE)
+		return;
+
+	pid_db[i].pid = 0;
+
+	if (!show_exit)
+		return;
 
 	if (!flat) {
 		d = pid_db[i].depth;
@@ -141,7 +148,6 @@ handle_exit(pid_t pid, int status)
 	fprintf(output, " time=%.3fs\n", (double)diff.tv_sec + (double)diff.tv_usec / 1e6);
 
 	fflush(output);
-	pid_db[i].pid = 0;
 }
 
 static void
@@ -150,7 +156,8 @@ handle_exec(pid_t pid)
 	char **pp;
 	struct kinfo_proc *kp;
 
-	int d, i, n;
+	int d, n;
+	int i = 0;
 
 	d = pid_depth(pid);
 	if (d < 0)
@@ -346,7 +353,7 @@ again:
 				continue;
 			if (kp[i].ki_stat == SZOMB)
 				continue;
-			EV_SET(&kevs[i], kp[i].ki_pid, EVFILT_PROC, EV_ADD, NOTE_EXEC | (show_exit ? NOTE_EXIT : 0) | NOTE_TRACK, 0, 0);
+			EV_SET(&kevs[i], kp[i].ki_pid, EVFILT_PROC, EV_ADD, NOTE_EXEC | NOTE_EXIT | NOTE_TRACK, 0, 0);
 		}
 		errno = 0;
 		if (kevent(kq, kevs, n, 0, 0, 0) == -1)
