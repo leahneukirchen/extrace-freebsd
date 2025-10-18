@@ -4,7 +4,7 @@ NAME
      extrace – trace exec() calls system-wide
 
 SYNOPSIS
-     extrace [-deflq] [-o file] [-p pid | cmd ...]
+     extrace [-deflqtu] [-o file] [-p pid | cmd ...]
 
 DESCRIPTION
      extrace traces all program executions occurring on a system.
@@ -22,6 +22,10 @@ DESCRIPTION
              shown.
 
      -q      Suppress printing of exec(3) arguments.
+
+     -t      Also display process exit status and duration.
+
+     -u      Also display the user running the process.
 
      -o file
              Redirect trace output to file.
@@ -46,4 +50,4 @@ AUTHORS
 LICENSE
      extrace is licensed under the terms of the MIT.
 
-FreeBSD                          June 30, 2017                         FreeBSD
+FreeBSD 15.0-STABLE            October 18, 2025                     EXTRACE(1)
