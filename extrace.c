@@ -346,9 +346,13 @@ again:
 			struct kevent *ke = &kev[i];
 			switch (ke->filter) {
 			case EVFILT_SIGNAL:
-				if (ke->ident == SIGCHLD)
-					while (waitpid(-1, 0, WNOHANG) > 0)
-						;
+				if (ke->ident == SIGCHLD) {
+					pid_t pid;
+					int wstatus;
+					while ((pid = waitpid(-1, &wstatus, WNOHANG)) > 0)
+						if (show_exit)
+							handle_exit(pid, wstatus);
+				}
 				quit = 1;
 				break;
 			case EVFILT_PROC:
