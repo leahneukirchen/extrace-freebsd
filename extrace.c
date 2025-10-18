@@ -25,6 +25,7 @@
 #include <fcntl.h>
 #include <err.h>
 #include <kvm.h>
+#include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,6 +40,7 @@ static int show_args = 1;
 static int show_cwd = 0;
 static int show_env = 0;
 static int show_exit = 0;
+static int show_user = 0;
 
 static kvm_t *kd;
 static int kq;
@@ -210,8 +212,16 @@ handle_exec(pid_t pid)
 	fprintf(output, "%d", pid);
 	if (show_exit)
 		putc('+', output);
-	putc(' ', output);
 
+	if (show_user) {
+		struct passwd *p;
+		if ((p = getpwuid(kp->ki_uid)))
+			fprintf(output," <%s>", p->pw_name);
+		else
+			fprintf(output," <%d>", kp->ki_uid);
+	}
+
+	putc(' ', output);
 	if (show_cwd) {
 		int name[] = { CTL_KERN, KERN_PROC, KERN_PROC_CWD, pid };
 		struct kinfo_file info;
@@ -281,7 +291,7 @@ main(int argc, char *argv[])
 
 	output = stdout;
 
-	while ((opt = getopt(argc, argv, "deflo:p:qtw")) != -1)
+	while ((opt = getopt(argc, argv, "deflo:p:qtwu")) != -1)
 		switch (opt) {
 		case 'd': show_cwd = 1; break;
 		case 'e': show_env = 1; break;
@@ -298,12 +308,13 @@ main(int argc, char *argv[])
 			break;
 		case 't': show_exit = 1; break;
 		case 'w': /* obsoleted, ignore */; break;
+		case 'u': show_user = 1; break;
 		default: goto usage;
 		}
 
 	if (parent != 1 && optind != argc) {
 usage:
-		fprintf(stderr, "Usage: extrace [-deflqt] [-o FILE] [-p PID|CMD...]\n");
+		fprintf(stderr, "Usage: extrace [-deflqtu] [-o FILE] [-p PID|CMD...]\n");
 		exit(1);
 	}
 
