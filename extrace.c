@@ -152,21 +152,54 @@ handle_exec(pid_t pid)
 
 	int d, i, n;
 
-	for (i = 0; i < PID_DB_SIZE - 1; i++)
-		if (pid_db[i].pid == 0 || pid_db[i].pid == pid)
-			break;
-	if (i == PID_DB_SIZE - 1)
-		fprintf(stderr, "extrace: warning: pid_db of "
-		    "size %d overflowed\n", PID_DB_SIZE);
+	d = pid_depth(pid);
+	if (d < 0)
+		return;
 
-	if (!flat) {
-		d = pid_depth(pid);
-		if (d < 0)
-			return;
-		fprintf(output, "%*s", 2*d, "");
+	kp = kvm_getprocs(kd, KERN_PROC_PID, pid, &n);
+	if (!kp) {
+		fprintf(output, "\n");
+		warn("kvm_getprocs");
+		return;
+	}
+	pp = kvm_getargv(kd, kp, 0);
+	if (!pp) {
+		fprintf(output, "\n");
+		warn("kvm_getargv");
+		return;
 	}
 
+	if (show_exit || !flat) {
+		for (i = 0; i < PID_DB_SIZE - 1; i++)
+			if (pid_db[i].pid == 0 || pid_db[i].pid == pid)
+				break;
+		if (i == PID_DB_SIZE - 1)
+			fprintf(stderr, "extrace: warning: pid_db of "
+			    "size %d overflowed\n", PID_DB_SIZE);
 
+		if (show_exit && pid_db[i].pid == pid) {
+			if (!flat)
+				fprintf(output, "%*s", 2*d, "");
+
+			struct timeval now, diff;
+			gettimeofday(&now, 0);
+			timersub(&now, &pid_db[i].start, &diff);
+
+			fprintf(output, "%d- %s execed time=%.3fs\n",
+			    pid,
+			    pid_db[i].cmdline,
+			    (double)diff.tv_sec + (double)diff.tv_usec / 1e6);
+
+			pid_db[i].start = now;
+		} else {
+			pid_db[i].pid = pid;
+			pid_db[i].depth = d;
+			pid_db[i].start = kp->ki_start;
+		}
+	}
+
+	if (!flat)
+		fprintf(output, "%*s", 2*d, "");
 	fprintf(output, "%d", pid);
 	if (show_exit)
 		putc('+', output);
@@ -182,23 +215,6 @@ handle_exec(pid_t pid)
 			fprintf(output, "?");
 		fprintf(output, " %% ");
 	}
-
-	kp = kvm_getprocs(kd, KERN_PROC_PID, pid, &n);
-	if (!kp) {
-		fprintf(output, "\n");
-		warn("kvm_getprocs");
-		return;
-	}
-	pp = kvm_getargv(kd, kp, 0);
-	if (!pp) {
-		fprintf(output, "\n");
-		warn("kvm_getargv");
-		return;
-	}
-
-	pid_db[i].pid = pid;
-	pid_db[i].depth = d;
-	pid_db[i].start = kp->ki_start;
 
 	if (full_path) {
 		int name[] = { CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, pid };
