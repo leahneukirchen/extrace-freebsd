@@ -48,7 +48,7 @@ static int quit = 0;
 
 #define CMDLINE_DB_MAX 32
 #define PID_DB_SIZE 1024
-struct {
+static struct {
         pid_t pid;
         int depth;
         struct timeval start;
