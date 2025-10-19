@@ -1,7 +1,7 @@
 PROG=extrace
 
+WARNS?=6
 LDADD+=-lkvm
-CFLAGS+=-Wall -Wno-switch -Wextra -Wwrite-strings
 
 PREFIX?=/usr/local
 BINDIR?=$(PREFIX)/bin
