@@ -1,7 +1,7 @@
 PROG=	extrace
 
 WARNS?=	6
-LIBADD=	-lkvm
+LDADD=	-lkvm
 
 PREFIX?=	/usr/local
 BINDIR?=	$(PREFIX)/bin
