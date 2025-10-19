@@ -43,7 +43,6 @@ static int show_exit = 0;
 static int show_user = 0;
 
 static kvm_t *kd;
-static int kq;
 static int quit = 0;
 
 #define CMDLINE_DB_MAX 32
@@ -287,7 +286,7 @@ int
 main(int argc, char *argv[])
 {
 	struct kevent kev[4];
-	int opt, i, n;
+	int kq, opt, i, n;
 
 	output = stdout;
 
