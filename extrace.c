@@ -382,11 +382,13 @@ again:
 				if (ke->ident == SIGCHLD) {
 					pid_t pid;
 					int wstatus;
-					while ((pid = waitpid(-1, &wstatus, WNOHANG)) > 0)
+					while ((pid = waitpid(-1, &wstatus, WNOHANG)) > 0) {
 						if (show_exit)
 							handle_exit(pid, wstatus);
+						if (pid == parent)
+							quit = 1;
+					}
 				}
-				quit = 1;
 				break;
 			case EVFILT_PROC:
 				if (ke->fflags & NOTE_EXIT)
