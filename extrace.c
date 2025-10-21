@@ -388,6 +388,8 @@ again:
 						if (pid == parent)
 							quit = 1;
 					}
+				} else if (ke->ident == SIGINT) {
+					quit = 1;
 				}
 				break;
 			case EVFILT_PROC:
