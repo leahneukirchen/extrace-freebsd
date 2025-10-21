@@ -121,7 +121,7 @@ handle_exit(pid_t pid, int status)
 	for (i = 0; i < PID_DB_SIZE; i++)
 		if (pid_db[i].pid == pid)
 			break;
-	if (pid == PID_DB_SIZE)
+	if (i == PID_DB_SIZE)
 		return;
 
 	pid_db[i].pid = 0;
